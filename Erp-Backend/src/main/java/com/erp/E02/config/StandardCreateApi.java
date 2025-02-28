@@ -17,6 +17,7 @@ import java.lang.annotation.Target;
         @ApiResponse(responseCode = "409", description = "名称重复"),
         @ApiResponse(responseCode = "500", description = "服务器内部错误")
 })
+//swagger-ui自动化生成接口信息
 public @interface StandardCreateApi {
     String summary() default "创建资源";
     String description() default "创建新的资源并初始化";

@@ -14,6 +14,7 @@ import org.springframework.context.annotation.Configuration;
         scheme = "bearer",
         bearerFormat = "JWT"
 )
+//openapi展示信息
 public class OpenApiConfig {
     @Bean
     public OpenAPI customOpenAPI() {
