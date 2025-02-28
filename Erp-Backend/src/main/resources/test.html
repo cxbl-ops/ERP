@@ -106,46 +106,71 @@
     }
 
     // 分片文件下载
-    function downloadFileChunks() {
+    async function downloadFileChunks() {
         const fileName = document.getElementById('downloadChunkFileName').value;
-        const chunkSize = 1024 * 1024;  // 每个分片大小（1MB）
+        const chunkSize = 1024 * 1024; // 1MB per chunk
+        const chunks = [];
 
-        // 获取文件的总大小
-        fetch(apiUrl + '/download-chunk/' + fileName)
-            .then(response => {
-                if (response.status === 416) {
-                    document.getElementById('downloadChunkResult').innerText = '文件分片下载失败: 416 Range Not Satisfiable';
-                    return;
+        try {
+            // 首次请求获取文件大小
+            const initialResponse = await fetch(apiUrl + '/download-chunk/' + fileName);
+
+            if (initialResponse.status === 416) {
+                document.getElementById('downloadChunkResult').innerText = '文件分片下载失败: 416 Range Not Satisfiable';
+                return;
+            }
+
+            const contentRange = initialResponse.headers.get('Content-Range');
+            if (!contentRange) {
+                document.getElementById('downloadChunkResult').innerText = '未收到有效的 Content-Range 头';
+                return;
+            }
+
+            const totalSize = parseInt(contentRange.split('/')[1]);
+            const totalChunks = Math.ceil(totalSize / chunkSize);
+
+            document.getElementById('downloadChunkResult').innerText = '开始下载...';
+
+            // 串行下载所有分片
+            for (let chunk = 0; chunk < totalChunks; chunk++) {
+                const start = chunk * chunkSize;
+                const end = Math.min((chunk + 1) * chunkSize - 1, totalSize - 1);
+                const range = `bytes=${start}-${end}`;
+
+                const response = await fetch(apiUrl + '/download-chunk/' + fileName, {
+                    headers: {
+                        'Range': range
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error(`分片 ${chunk + 1}/${totalChunks} 下载失败`);
                 }
 
-                const totalSize = response.headers.get('Content-Range').split('/')[1];
-                const totalChunks = Math.ceil(totalSize / chunkSize);
+                const blob = await response.blob();
+                chunks.push(blob);
 
-                for (let chunk = 0; chunk < totalChunks; chunk++) {
-                    const range = `bytes=${chunk * chunkSize}-${Math.min((chunk + 1) * chunkSize - 1, totalSize - 1)}`;
-                    fetch(apiUrl + '/download-chunk/' + fileName, {
-                        method: 'GET',
-                        headers: {
-                            'Range': range
-                        }
-                    })
-                        .then(response => response.blob())
-                        .then(blob => {
-                            const url = window.URL.createObjectURL(blob);
-                            const link = document.createElement('a');
-                            link.href = url;
-                            link.download = fileName;
-                            link.click();
-                            document.getElementById('downloadChunkResult').innerText = '分片下载成功: ' + fileName;
-                        })
-                        .catch(error => {
-                            document.getElementById('downloadChunkResult').innerText = '分片下载失败: ' + error;
-                        });
-                }
-            })
-            .catch(error => {
-                document.getElementById('downloadChunkResult').innerText = '下载失败: ' + error;
-            });
+                // 更新进度
+                document.getElementById('downloadChunkResult').innerText =
+                    `下载进度: ${chunk + 1}/${totalChunks} 分片`;
+            }
+
+            // 合并所有分片
+            const completeFile = new Blob(chunks, { type: 'application/octet-stream' });
+
+            // 触发下载
+            const url = window.URL.createObjectURL(completeFile);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = fileName;
+            link.click();
+
+            window.URL.revokeObjectURL(url);
+            document.getElementById('downloadChunkResult').innerText = '下载完成';
+
+        } catch (error) {
+            document.getElementById('downloadChunkResult').innerText = '下载失败: ' + error.message;
+        }
     }
 </script>
 

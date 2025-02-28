@@ -11,6 +11,7 @@ public class CorsConfig implements WebMvcConfigurer {
         registry.addMapping("/**") // 允许所有接口
                 .allowedOrigins("*") // 允许所有来源（生产环境应指定具体域名）
                 .allowedMethods("GET", "POST", "PUT", "DELETE")
-                .allowedHeaders("*");
+                .allowedHeaders("*")
+                .exposedHeaders("Content-Range", "Content-Length");
     }
 }

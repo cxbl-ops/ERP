@@ -108,22 +108,24 @@ public class FileController {
     public ResponseEntity<byte[]> downloadFile(@PathVariable String fileName,
                                                @RequestHeader(value = HttpHeaders.RANGE, required = false) String range) {
         try {
+            long fileSize = FileUtils.getFileSize(uploadDir, fileName);
             byte[] fileContent = fileStorageService.downloadFileRange(fileName, range);
 
             if (fileContent == null) {
-                return ResponseEntity.status(HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE).body(null); // 416 错误，范围不满足
+                return ResponseEntity.status(HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE).body(null);
             }
 
-            // 获取文件的 MIME 类型
-            String fileType = "application/octet-stream";  // 默认文件类型
-
+            String fileType = "application/octet-stream";
             HttpHeaders headers = new HttpHeaders();
             headers.add(HttpHeaders.CONTENT_TYPE, fileType);
             headers.add(HttpHeaders.CONTENT_LENGTH, String.valueOf(fileContent.length));
 
+            // 无论是否有 range，都添加 Content-Range
             if (range != null) {
-                // 返回的是部分内容，需要添加内容范围
-                headers.add(HttpHeaders.CONTENT_RANGE, "bytes " + range + "/" + FileUtils.getFileSize(uploadDir, fileName));
+                headers.add(HttpHeaders.CONTENT_RANGE, "bytes " + range.replace("bytes=", "") + "/" + fileSize);
+            } else {
+                // 当没有 range 时，返回完整文件的范围
+                headers.add(HttpHeaders.CONTENT_RANGE, "bytes 0-" + (fileSize - 1) + "/" + fileSize);
             }
 
             return ResponseEntity.status(HttpStatus.PARTIAL_CONTENT)
