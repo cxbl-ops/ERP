@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>文件上传与下载测试</title>
+</head>
+<body>
+
+<h1>文件上传与下载测试</h1>
+
+<!-- 普通文件上传 -->
+<h2>普通文件上传</h2>
+<input type="file" id="fileInput">
+<button onclick="uploadFile()">上传文件</button>
+<p id="uploadResult"></p>
+
+<!-- 分片文件上传 -->
+<h2>分片文件上传</h2>
+<input type="file" id="chunkFileInput">
+<button onclick="uploadFileChunks()">分片上传文件</button>
+<p id="uploadChunkResult"></p>
+
+<!-- 文件下载 -->
+<h2>文件下载</h2>
+<input type="text" id="downloadFileName" placeholder="输入文件名">
+<button onclick="downloadFile()">下载文件</button>
+<p id="downloadResult"></p>
+
+<!-- 分片文件下载 -->
+<h2>分片文件下载</h2>
+<input type="text" id="downloadChunkFileName" placeholder="输入文件名">
+<button onclick="downloadFileChunks()">分片下载文件</button>
+<p id="downloadChunkResult"></p>
+
+<script>
+    const apiUrl = 'http://localhost:8080/files';
+
+    // 普通文件上传
+    function uploadFile() {
+        const file = document.getElementById('fileInput').files[0];
+        const formData = new FormData();
+        formData.append('file', file);
+
+        fetch(apiUrl + '/upload', {
+            method: 'POST',
+            body: formData
+        })
+            .then(response => response.text())  // 提取响应的文本（即文件 URL）
+            .then(fileUrl => {
+                document.getElementById('uploadResult').innerText = '上传成功: ' + fileUrl;
+            })
+            .catch(error => {
+                document.getElementById('uploadResult').innerText = '上传失败: ' + error;
+            });
+    }
+
+    // 分片文件上传
+    function uploadFileChunks() {
+        const file = document.getElementById('chunkFileInput').files[0];
+        const chunkSize = 1024 * 1024;  // 每个分片大小（1MB）
+        const totalChunks = Math.ceil(file.size / chunkSize);
+        const fileName = file.name;
+        console.log(fileName)
+
+        for (let chunk = 0; chunk < totalChunks; chunk++) {
+            const formData = new FormData();
+            const start = chunk * chunkSize;
+            const end = Math.min(start + chunkSize, file.size);
+            const fileSlice = file.slice(start, end);
+            formData.append('file', fileSlice);
+            formData.append('chunk', chunk + 1);  // 分片编号，从1开始
+            formData.append('totalChunks', totalChunks);
+            formData.append('fileName', fileName);
+
+            fetch(apiUrl + '/upload-chunk', {
+                method: 'POST',
+                body: formData
+            })
+                .then(response => response.text())  // 提取响应的文本（即文件 URL）
+                .then(fileUrl => {
+                    document.getElementById('uploadResult').innerText = '上传成功: ' + fileUrl;
+                })
+                .catch(error => {
+                    document.getElementById('uploadResult').innerText = '上传失败: ' + error;
+                });
+        }
+    }
+
+    // 文件下载
+    function downloadFile() {
+        const fileName = document.getElementById('downloadFileName').value;
+        fetch(apiUrl + '/download/' + fileName)
+            .then(response => response.blob())
+            .then(blob => {
+                const url = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = fileName;
+                link.click();
+                document.getElementById('downloadResult').innerText = '下载成功: ';
+            })
+            .catch(error => {
+                document.getElementById('downloadResult').innerText = '下载失败: ' + error;
+            });
+    }
+
+    // 分片文件下载
+    function downloadFileChunks() {
+        const fileName = document.getElementById('downloadChunkFileName').value;
+        const chunkSize = 1024 * 1024;  // 每个分片大小（1MB）
+
+        // 获取文件的总大小
+        fetch(apiUrl + '/download-chunk/' + fileName)
+            .then(response => {
+                if (response.status === 416) {
+                    document.getElementById('downloadChunkResult').innerText = '文件分片下载失败: 416 Range Not Satisfiable';
+                    return;
+                }
+
+                const totalSize = response.headers.get('Content-Range').split('/')[1];
+                const totalChunks = Math.ceil(totalSize / chunkSize);
+
+                for (let chunk = 0; chunk < totalChunks; chunk++) {
+                    const range = `bytes=${chunk * chunkSize}-${Math.min((chunk + 1) * chunkSize - 1, totalSize - 1)}`;
+                    fetch(apiUrl + '/download-chunk/' + fileName, {
+                        method: 'GET',
+                        headers: {
+                            'Range': range
+                        }
+                    })
+                        .then(response => response.blob())
+                        .then(blob => {
+                            const url = window.URL.createObjectURL(blob);
+                            const link = document.createElement('a');
+                            link.href = url;
+                            link.download = fileName;
+                            link.click();
+                            document.getElementById('downloadChunkResult').innerText = '分片下载成功: ' + fileName;
+                        })
+                        .catch(error => {
+                            document.getElementById('downloadChunkResult').innerText = '分片下载失败: ' + error;
+                        });
+                }
+            })
+            .catch(error => {
+                document.getElementById('downloadChunkResult').innerText = '下载失败: ' + error;
+            });
+    }
+</script>
+
+</body>
+</html>

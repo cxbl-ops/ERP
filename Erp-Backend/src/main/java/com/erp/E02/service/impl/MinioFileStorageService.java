@@ -76,4 +76,14 @@ public class MinioFileStorageService implements FileStorageService {
             throw new IOException("MinIO 文件下载失败", e);
         }
     }
+
+    @Override
+    public String uploadFileChunk(MultipartFile file, int chunk, int totalChunks, String fileName) throws IOException {
+        return "";
+    }
+
+    @Override
+    public byte[] downloadFileRange(String fileName, String range) throws IOException {
+        return new byte[0];
+    }
 }

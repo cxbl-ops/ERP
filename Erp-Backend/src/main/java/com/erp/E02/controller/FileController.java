@@ -2,42 +2,81 @@ package com.erp.E02.controller;
 
 import com.erp.E02.config.StandardCreateApi;
 import com.erp.E02.service.FileStorageService;
+import com.erp.E02.utils.FileUtils;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.Resource;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.apache.tika.Tika;
-
 import java.io.IOException;
 
-@Tag(name = "文件上传", description = "文件上传 、文件下载管理")
+@Tag(name = "文件上传下载", description = "文件上传 、文件下载管理")
 @RestController
 @RequestMapping("/files")
 @RequiredArgsConstructor
 public class FileController {
 
+    @Value("${file.storage.local.path}")
+    private String uploadDir;
+
     @Resource
     private final FileStorageService fileStorageService;
 
-    @StandardCreateApi(summary = "文件上传", description = "文件上传")
+    /**
+     * 普通上传
+     * @param file
+     * @return
+     */
+    @StandardCreateApi(summary = "文件普通上传", description = "文件普通上传")
     @PostMapping("/upload")
-    public String uploadFile(@RequestParam("file") MultipartFile file) {
-        System.out.println("收到图片啦~");
+    public ResponseEntity<String> uploadFile(@RequestParam("file") MultipartFile file) {
         try {
             String file_url = fileStorageService.uploadFile(file);
-            System.out.println("返回图片url路径: " + file_url);
-            return file_url;
+            System.out.println("返回文件url: " + file_url);
+            return ResponseEntity.ok(file_url);
         } catch (IOException e) {
-            return "文件上传失败: " + e.getMessage();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("文件上传失败");
         }
     }
 
-    @StandardCreateApi(summary = "文件下载", description = "文件下载")
+    /**
+     * 分片上传
+     * @param file
+     * @param chunk
+     * @param totalChunks
+     * @param fileName
+     * @return
+     */
+    @StandardCreateApi(summary = "文件分片上传", description = "文件分片上传")
+    @PostMapping("/upload-chunk")
+    public ResponseEntity<String> uploadFile(
+            @RequestParam("file") MultipartFile file,
+            @RequestParam("chunk") int chunk,
+            @RequestParam("totalChunks") int totalChunks,
+            @RequestParam("fileName") String fileName
+    ) {
+        try {
+            String fileUrl = fileStorageService.uploadFileChunk(file, chunk, totalChunks, fileName);
+            if (fileUrl != null) System.out.println("返回文件url: " + fileUrl);
+            return ResponseEntity.ok(fileUrl);
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("文件上传失败");
+        }
+    }
+
+    /**
+     * 普通下载
+     * @param fileName
+     * @return
+     */
+    @StandardCreateApi(summary = "文件普通下载", description = "文件普通下载")
     @GetMapping("/download/{fileName}")
     public ResponseEntity<byte[]> downloadFile(@PathVariable String fileName) {
         try {
@@ -55,6 +94,64 @@ public class FileController {
                     .body(fileContent);
         } catch (IOException e) {
             return null;
+        }
+    }
+
+    /**
+     * 分片文件下载
+     * @param fileName
+     * @param range
+     * @return
+     */
+    @StandardCreateApi(summary = "文件分片下载", description = "文件分片下载")
+    @GetMapping("/download-chunk/{fileName}")
+    public ResponseEntity<byte[]> downloadFile(@PathVariable String fileName,
+                                               @RequestHeader(value = HttpHeaders.RANGE, required = false) String range) {
+        try {
+            byte[] fileContent = fileStorageService.downloadFileRange(fileName, range);
+
+            if (fileContent == null) {
+                return ResponseEntity.status(HttpStatus.REQUESTED_RANGE_NOT_SATISFIABLE).body(null); // 416 错误，范围不满足
+            }
+
+            // 获取文件的 MIME 类型
+            String fileType = "application/octet-stream";  // 默认文件类型
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.add(HttpHeaders.CONTENT_TYPE, fileType);
+            headers.add(HttpHeaders.CONTENT_LENGTH, String.valueOf(fileContent.length));
+
+            if (range != null) {
+                // 返回的是部分内容，需要添加内容范围
+                headers.add(HttpHeaders.CONTENT_RANGE, "bytes " + range + "/" + FileUtils.getFileSize(uploadDir, fileName));
+            }
+
+            return ResponseEntity.status(HttpStatus.PARTIAL_CONTENT)
+                    .headers(headers)
+                    .body(fileContent);
+        } catch (IOException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(null);
+        }
+    }
+
+
+    @StandardCreateApi(summary = "图片直链", description = "图片直链")
+    @GetMapping("/images/{fileName}")
+    public ResponseEntity<byte[]> previewFile(@PathVariable String fileName) {
+        try {
+            byte[] fileContent = fileStorageService.downloadFile(fileName);
+            // 使用 Apache Tika 来识别文件的 MIME 类型
+            Tika tika = new Tika();
+            String fileType = tika.detect(fileContent); // 获取文件的 MIME 类型
+            // 设置响应头
+            HttpHeaders headers = new HttpHeaders();
+            headers.add(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=" + fileName);
+            return ResponseEntity.ok()
+                    .headers(headers)
+                    .contentType(MediaType.parseMediaType(fileType)) // 设置正确的文件类型
+                    .body(fileContent);
+        } catch (IOException e) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(null); // 返回404
         }
     }
 }
