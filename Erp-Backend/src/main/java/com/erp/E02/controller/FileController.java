@@ -37,6 +37,7 @@ public class FileController {
     @StandardCreateApi(summary = "文件普通上传", description = "文件普通上传")
     @PostMapping("/upload")
     public ResponseEntity<String> uploadFile(@RequestParam("file") MultipartFile file) {
+        System.out.println("上传文件: " + file.getOriginalFilename());
         try {
             String file_url = fileStorageService.uploadFile(file);
             System.out.println("返回文件url: " + file_url);
